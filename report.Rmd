@@ -1,0 +1,114 @@
+Human Activity Recognition Classification Algorithm
+========================================================
+
+Human Activity Recognition - HAR - has emerged as a key research area in the last years and is gaining increasing attention by the pervasive computing research community (see picture below, that illustrates the increasing number of publications in HAR with wearable accelerometers), especially for the development of context-aware systems. There are many potential applications for HAR, like: elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises.
+
+Read more: **http://groupware.les.inf.puc-rio.br/har#ixzz35P41K852**
+
+The purpose of this exercise is to provide a classifictaion algorithm that allows to detect the type of activity performed.
+
+The first part of the script consist of loading the required library and files:
+
+```{r}
+library(caret)
+setwd("~/R/Shiny/ML")
+data<-read.csv('pml-training.csv')
+
+```
+
+Then proceed to eliminate all the columns from the dataset that are empty or with NA values. For simplicity the approach taken is to delete via checking the first entry in the datable which has been validated as a representative sample of the overall recordings.
+
+The variables of time were at first considered useful for timeslicing but due to restraints in computational power the approach taken is more simplistic.
+
+```{r}
+#Clean the dataset------------------------
+dataClean<-data[,-c(2,3,4,5,6,7)]
+n<-rep("",153)
+h<-as.logical(dataClean[1,]!=n)
+h<-replace(h, is.na(h), FALSE)
+dataClean<-dataClean[,h]
+#-----------------------------------------
+```
+
+The vector h will be use in the future to preprocess the validation dataset of the exercise.
+
+Now the data is splitted into the training and test set. Due to the high dimensionality of the data and the large number of samples the training size is set to only a 10%. The intention was to use this value only for preliminary tests.
+
+```{r}
+inTrain <- createDataPartition(y=dataClean$classe, p=0.1, list=FALSE)
+training <- dataClean[inTrain,]
+testing <- dataClean[-inTrain,]
+```
+
+With the training set ready the model can be trained using PCA for preprocessing the information and hopefully reduce dimensionality.
+
+```{r}
+modFit <- train(classe~.,data=training,method="rf",preProcess="pca", prox=TRUE, na.action=na.pass)
+modFit
+```
+
+The resultant model shows a pretty decent accuracy for the sample size selected.
+Let's evaluate the accuracy with the other 90% of the data: 
+
+```{r}
+confusionMatrix(testing$classe,predict(modFit,testing))
+```
+
+The results are quite promising. And due to the small size of the training set compared with the test set it seems that there is no overfitting, also confirmed by the increase on accuracy on the test set.
+
+
+Although the first idea was to increase the training set for better accuracy the results seem enough promising to try to predict the validation set:
+
+```{r}
+#Validation-------------------------------------------------
+dataT<-read.csv('pml-testing.csv')
+#Clean the dataset------------------------
+dataCleanT<-dataT[,-c(2,3,4,5,6,7)]
+dataCleanT<-dataCleanT[,h]
+#----------------------------------
+sol<-predict(modFit,dataCleanT)
+sol
+```
+
+Unluckily the rersults for this validation data turned to give only a 55% accuracy. Having a second look to the data there seems to be an issue with the classes biasing the whole system towards class A:
+
+```{r}
+nrow(dataClean[dataClean$classe=='A',])
+nrow(dataClean[dataClean$classe=='B',])
+nrow(dataClean[dataClean$classe=='C',])
+nrow(dataClean[dataClean$classe=='D',])
+nrow(dataClean[dataClean$classe=='E',])
+```
+
+There is 1.5 times more A samples than any other which seems to explain why  15 out of 20 predictions were marked as A.
+Just to confirm let's check if the relation maintains on the training set:
+
+```{r}
+nrow(dataClean[training$classe=='A',])
+nrow(dataClean[training$classe=='B',])
+nrow(training[training$classe=='A',])
+nrow(training[training$classe=='B',])
+nrow(training[training$classe=='C',])
+nrow(training[training$classe=='D',])
+nrow(training[training$classe=='E',])
+```
+
+And it is the case.
+
+So let's try to redo the model substracting 200 entries of A class on the training set:
+
+
+```{r}
+newTraining<-training [200:nrow(training)] #Ordered by class already
+modFit <- train(classe~.,data=newTraining,method="rf",preProcess="pca", prox=TRUE, na.action=na.pass)
+modFit
+```
+New confusion matrix:
+```{r}
+confusionMatrix(testing$classe,predict(modFit,testing))
+```
+And new validation results
+```{r}
+sol<-predict(modFit,dataCleanT)
+sol
+```
